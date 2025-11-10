@@ -1,0 +1,23 @@
+Dare lo pseudocodice di un algoritmo che prende in input il vettore dei padri P di un albero,
+due vertici x,y e ritorna in O(n) la distanza nell'albero tra x e y
+
+Mia soluzione:
+
+distance_from_LCA(A, P, v):
+	d <- 0
+	while A[v] != 2 DO:
+		d <- d+1
+		v <- P[v]
+
+distance_xy(P, x, y):
+	A <- array degli antenati [0,...,0]
+	tmp <- x
+	while tmp non è radice DO:
+		A[tmp] <- A[tmp]+1
+		tmp <- P[tmp]
+	tmp <- y
+	while tmp non è radice DO:
+		A[tmp] <- A[tmp]+1
+		tmp <- P[tmp]
+	tot <- distance_from_LCA(A, P, x) + distance_from_LCA(A, P, y)
+	RETURN tot

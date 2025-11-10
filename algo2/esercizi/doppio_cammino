@@ -1,0 +1,40 @@
+TRACCIA:
+Fornire una algoritmo in pseudo-codice che, dato un grafo non diretto e connesso G=(V,E),
+trova una passeggiata in G che attraversa tutti gli archi una e una sola volta
+in ognuna della due direzioni in tempo O(|V|+|E|)
+
+
+Doppio_cammino(G):
+	Vis <- insieme degli archi usati
+	S <- stack vuoto
+	u <- un nodo di G da cui partire
+	S.push(u)
+	L <- lista del path inizializzata a [u]
+	while S non vuoto DO:
+		v <- S.top()							/* Estraggo il top dello stack */
+		if EXISTS (v, w) non in Vis THEN:		/* Se esiste un arco (v, w) che non ho usato */
+			Vis.add(v, w)
+			S.push(w)
+			L.insert(w)							/* Cammino verso quel nodo usando l'arco */
+		else:
+			x <- S.pop()						/* Estraggo il nodo  */
+			L.insert(x)							/* Lo uso per "tornare indietro" */
+	return  L
+
+
+----- Soluzione ricorsiva (alternativa) -----
+
+Doppio_cammino(G, u: padre, v: figlio, Vis, L):
+	Vis.add(u, v)								/* Aggiungo l'arco */
+	L.insert(v)									/* Metto il figlio nel path */
+	for w in v.Adj DO:
+		if (v, w) not in Vis THEN:
+			Doppio_cammino(G, v, w, Vis, L)
+	L.insert(u)									/* Inserisco nella risalita */
+
+Funzione ausiliaria:
+	u <- un nodo del grafo
+	v <- un figlio di u
+	L <- lista vuota
+	Vis <- insieme vuoto
+	return Doppio_cammino(G, u, v, Vis, L)

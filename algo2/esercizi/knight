@@ -1,0 +1,14 @@
+KNIGHT(Scacchiera M*N, start=(x_0, y_0), end=(x_1, y_1)):
+	S <- matrice MxN inizializzata a +inf
+	S[start] <- 0 /* posizione iniziale ha distanza 0 da se stessa */
+	Q <- coda vuota
+	Q.enqueue(start)
+	P <- vettore dei padri ? (opzionale)
+	while Q non vuota DO:
+		pos <- Q.dequeue()
+		M <- lista di mosse calcolare in base al pezzo (cavallo=...)
+		for m in M DO:
+			if S[m] == +inf THEN:
+				S[m] <- S[pos] +1
+				Q.enqueue(m)
+	RETURN S[end]

@@ -1,0 +1,19 @@
+Un grafo ha i pesi sia sugli archi che sui vertici. Dato G, p, x, y, trovare un cammino minimo da x a y
+tenendo conto del peso totale del cammino come peso degli archi usati e dei vertici su cui passo.
+
+Usiamo Dijkstra modificato
+
+Dijkstra_mod(G, p, x, y):
+	Dist <- array delle distanze a +inf
+	P <- vettore dei padri
+	Dist[x] <- 0
+	P[x] <- x
+	H <- min heap con x pari a zero
+	WHILE H non è vuoto DO:
+		v <- H.getmin()
+		FOR w adiacente di v DO:
+			IF Dist[w] > Dist[v] + p(v, w) + p(w) THEN:
+				Dist[w] <- Dist[v] + p(v, w) + p(w)
+				P[w] <- v
+				H.decrease(w)
+	RETURN Dist[y]

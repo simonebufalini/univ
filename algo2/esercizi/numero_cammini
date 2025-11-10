@@ -1,0 +1,17 @@
+Fornire un algoritmo in pseudocodice che dato un DAG G e due vertici s, t
+restituisce il numeri di cammini possibili da s a t in G
+
+CONTA(G, T, k, t):
+	if T[k] != -1 THEN:
+		return T[k]
+	c <- 0
+	for each v in k.Adj DO:
+		c <- c + CONTA(G, T, v, t)
+	T[k] <- c
+	return c
+
+AUX(G, s, t):
+	T <- [-1,...,-1]
+	T[t] <- 1
+	CONTA(G, T, s, t)
+	return T[s]

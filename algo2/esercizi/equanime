@@ -1,0 +1,19 @@
+Un grafo G non diretto si dice equanime se per ogni vertice x, gli alberi DFS e BFS coincidono.
+Dare lo pseudocodice di un algoritmo che verifica in O(n) se un grafo non diretto G è equanime
+
+Spiegazione: Se una visita DFS e BFS producono lo stesso albero di visita, significa che
+il grafo è aciclico perché la DFS non ha back edges. Se un grafo è non diretto e aciclico,
+allora deduciamo che è un albero. Verifichiamo quindi che G è un albero
+
+Per essere albero -> grafo non diretto, aciclico, connesso e ha n vertici ed n-1 archi
+
+Equanime(G):
+	n <- |V|
+	m <- |E|
+	if m != n-1 THEN:
+		RETURN FALSE						# se non ha n-1 archi non può essere albero
+	Vis <- DFS(G)							# chiamo una DFS che ora ha costo O(n+(n-1)) = O(n)
+	if EXISTS vertice v not in Vis THEN:	# se non ho visitato tutti i nodi, non è connesso
+		RETURN FALSE
+	RETURN TRUE								# altrimenti, ho verificato che è un albero in O(n)
+

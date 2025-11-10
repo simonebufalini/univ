@@ -1,0 +1,21 @@
+Esercizio: Dato un array A, un inversione in A è una coppia di indici i,j tali che
+i < j e A[i] > A[j]
+Dare lo pseudocodice di un algoritmo che trova tutte le inversioni di un array A
+di n interi in tempo O(n*(logn)^2)
+
+Mia soluzione opetetica:
+
+Inversioni(A, c=0, i=0, j=n):
+	if len(A) == 1 THEN:
+		return A[0]
+	if len(A) == 2 AND A[i] > A[j] THEN:
+		c = c+1
+		return A
+	m <- (i+j)//2
+	left <- Inversioni(A, c, i, m)
+	right <- Inversioni(A, c, m, j)
+	for x in left:
+		for y in right:
+			if x > y THEN:
+				c = c+1
+	RETURN c

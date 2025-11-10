@@ -1,0 +1,17 @@
+Abbiamo un array A di n interi, ordinato e senza nessun doppione. Vogliamo trovare in O(log(n))
+il minimo intero positivo x t.c. x non appartiene ad A.
+Es: A = [1, 2, 3, 5, 7, 8, 9] -> 4 è il più piccolo intero positivo che non è in A
+
+Pseudocodice:
+
+MinimoIntero(A, i=0, j=n):
+	m <- (i+j)//2
+	if A[m+1] != A[m]+1 THEN:			# caso base 1
+		return A[m]+1
+	if A[m-1] != A[m]-1 THEN:			# caso base 2
+		return A[m]-1
+	if A[m] > m	THEN:					# ho un buco a sx
+		return MinimoIntero(A, i, m)
+	return MinimoIntero(A, m, j)
+
+

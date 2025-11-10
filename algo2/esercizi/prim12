@@ -1,0 +1,30 @@
+PRIM_12(G: grafo non diretto, connesso e con pesi in {1, 2})
+
+  P[v] <- 0           per ogni v ∈ V        /* padre di ciascun nodo */
+  visitato[v] <- falso per ogni v ∈ V
+  Q <- deque vuota
+
+  s <- un nodo qualsiasi di G
+  P[s] <- s
+  visitato[s] <- vero
+
+  /* inserisco gli archi che partono da s */
+  per ogni arco (s, v) con peso w:
+      se w = 1 allora Q.push_front((s, v))
+      altrimenti Q.push_back((s, v))
+
+  mentre Q non è vuota do
+      (u, v) <- Q.pop_front()
+
+      se visitato[v] = falso allora
+          visitato[v] <- vero
+          P[v] <- u
+
+          /* aggiungo i nuovi archi che partono da v */
+          per ogni arco (v, x) con peso w:
+              se visitato[x] = falso allora
+                  se w = 1 allora Q.push_front((v, x))
+                  altrimenti Q.push_back((v, x))
+
+  restituisci P
+

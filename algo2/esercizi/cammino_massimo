@@ -1,0 +1,16 @@
+G è un DAG: dare lo pseudocodice di un algoritmo che prende in input G e due nodi u,v e trova
+il cammino di peso massimo in G da u a v.
+
+MaxPath(G, u, v):
+	L <- ordinamento topologico di G
+	Dist <- array a -inf
+	Dist[u] <- 0
+	P <- vettore dei padri
+	for w in L DO:
+		if Dist[w] = -inf THEN:
+			continue
+		for z successore di w con peso p DO:
+			if Dist[w]+p > Dist[z] THEN:
+				Dist[z] <- Dist[w]+p
+				P[z] <- w
+	Return Dist[v]
