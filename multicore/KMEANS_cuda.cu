@@ -271,7 +271,7 @@ int main(int argc, char* argv[]) {
 
     printf("%s", outputMsg);
     end = clock();
-    printf("\nComputation: %f seconds", (double)(end - start) / CLOCKS_PER_SEC);
+    printf("\nComputation: %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
 
     // Retrieve results
     cudaCheckError(cudaMemcpy(h_classMap, d_classMap, lines * sizeof(int), cudaMemcpyDeviceToHost));
