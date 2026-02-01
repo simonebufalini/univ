@@ -124,8 +124,8 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
-    clock_t start, end;
-    if (rank == 0) start = clock();
+    double start, end;
+    if (rank == 0) start = MPI_Wtime();
 
     if(argc != 7) {
         if (rank == 0) fprintf(stderr,"EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
@@ -208,12 +208,12 @@ int main(int argc, char* argv[]) {
     if(rank == 0) classMap = (int*)calloc(lines, sizeof(int));
 
     if (rank == 0) {
-        end = clock();
-        printf("\nMemory allocation & Dist: %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
-        start = clock();
+        end = MPI_Wtime();
+        printf("\nMemory allocation & Dist: %f seconds\n", (double)(end - start));
+        start = MPI_Wtime();
     }
 
-    int j, class;
+    int j, cluster_id;
     float dist, minDist;
     int it=0;
     int global_changes = 0;
@@ -228,32 +228,32 @@ int main(int argc, char* argv[]) {
     float *global_auxCentroids = (float*)malloc(K*samples*sizeof(float));
     float *distCentroids = (float*)malloc(K*sizeof(float));
 
-    char *outputMsg = (char *)calloc(10000,sizeof(char));
+    char *outputMsg = (char *)calloc(maxIterations * 100, sizeof(char));
     char lineBuf[100];
-
+    
     do {
         it++;
         int local_changes = 0;
 
         // 1. ASSIGNMENT STEP (Parallelized with OpenMP)
         // Each rank processes its local slice of data
-        #pragma omp parallel for private(j, dist, minDist, class) reduction(+:local_changes)
+        #pragma omp parallel for private(j, dist, minDist, cluster_id) reduction(+:local_changes)
         for(int i=0; i<local_lines; i++) {
-            class=1;
+            cluster_id=1;
             minDist=FLT_MAX;
             for(j=0; j<K; j++) {
                 dist = euclideanDistance(&local_data[i*samples], &centroids[j*samples], samples);
                 if(dist < minDist) {
                     minDist=dist;
-                    class=j+1;
+                    cluster_id=j+1;
                 }
             }
-            if(local_classMap[i] != class) {
+            if(local_classMap[i] != cluster_id) {
                 local_changes++;
             }
-            local_classMap[i] = class;
+            local_classMap[i] = cluster_id;
         }
-
+        
         // Aggregate total changes from all ranks
         MPI_Allreduce(&local_changes, &global_changes, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
@@ -263,16 +263,16 @@ int main(int argc, char* argv[]) {
 
         // Calculate local partial sums (Parallelized with OpenMP)
         // Using atomic to safely update the shared accumulation arrays
-        #pragma omp parallel for private(j, class)
+        #pragma omp parallel for private(j, cluster_id)
         for(int i=0; i<local_lines; i++) {
-            class = local_classMap[i];
+            cluster_id = local_classMap[i];
             
             #pragma omp atomic
-            local_pointsPerClass[class-1]++;
+            local_pointsPerClass[cluster_id-1]++;
             
             for(j=0; j<samples; j++){
                 #pragma omp atomic
-                local_auxCentroids[(class-1)*samples+j] += local_data[i*samples+j];
+                local_auxCentroids[(cluster_id-1)*samples+j] += local_data[i*samples+j];
             }
         }
 
@@ -312,9 +312,9 @@ int main(int argc, char* argv[]) {
 
     if (rank == 0) {
         printf("%s", outputMsg);
-        end = clock();
-        printf("\nComputation: %f seconds", (double)(end - start) / CLOCKS_PER_SEC);
-        start = clock();
+        end = MPI_Wtime();
+        printf("\nComputation: %f seconds", (double)(end - start));
+        start = MPI_Wtime();
         
         if (global_changes <= minChanges) printf("\n\nTermination: Min changes reached.");
         else if (it >= maxIterations) printf("\n\nTermination: Max iterations reached.");
@@ -335,8 +335,8 @@ int main(int argc, char* argv[]) {
         free(classMap);
         free(centroidPos);
         free(outputMsg);
-        end = clock();
-        printf("\n\nMemory deallocation: %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
+        end = MPI_Wtime();
+        printf("\n\nMemory deallocation: %f seconds\n", (double)(end - start));
     }
 
     free(local_data);
